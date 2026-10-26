@@ -167,3 +167,12 @@ pre.cmd{background:var(--ink);color:#dbe5ec;border-radius:var(--r);padding:12px 
 @media (prefers-reduced-motion:no-preference){
   .fstep .bar i{transition:width .5s ease}
 }
+
+/* домены */
+.dlist{display:grid;gap:14px}
+.dcard{background:#fff;border:1px solid var(--line);border-radius:var(--r);padding:16px 18px}
+.dhead{display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+.dhost{font-size:17px}
+.steps{margin:10px 0 16px;padding-left:22px;display:grid;gap:12px;font-size:14.5px}
+.steps .tblwrap{margin:8px 0}
+.tips{margin:6px 0 0;padding-left:18px;color:var(--muted);font-size:13.5px}

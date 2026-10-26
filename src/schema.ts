@@ -49,6 +49,20 @@ alter table offers add column if not exists landing_type text not null default '
 alter table offers add column if not exists landing_html text;
 create unique index if not exists offers_domain_uq on offers (lower(domain)) where domain is not null;
 
+-- Реестр доменов лендингов (подключаются в панели, выбираются в кампании)
+create table if not exists domains (
+  id uuid primary key default gen_random_uuid(),
+  host text not null,
+  status text not null default 'pending',
+  render_domain_id text,
+  problem text,
+  last_check jsonb,
+  checked_at timestamptz,
+  created_at timestamptz not null default now()
+);
+create unique index if not exists domains_host_uq on domains (lower(host));
+insert into domains (host) select distinct lower(domain) from offers where domain is not null on conflict do nothing;
+
 create table if not exists landing_assets (
   offer_id uuid not null references offers(id) on delete cascade,
   path text not null,

@@ -87,6 +87,12 @@ export function registerApi(app: FastifyInstance) {
       api.post('/channels', async (req, reply) => reply.code(201).send(await run('add_channel', req.body)));
       api.delete('/channels/:id', async (req) => run('delete_channel', withParams(req)));
 
+      // ── домены
+      api.get('/domains', async () => run('list_domains', {}));
+      api.post('/domains', async (req, reply) => reply.code(201).send(await run('add_domain', req.body)));
+      api.post('/domains/:domain/check', async (req) => run('check_domain', withParams(req)));
+      api.delete('/domains/:domain', async (req) => run('delete_domain', withParams(req)));
+
       // ── офферы
       api.get('/offers', async (req) => run('list_offers', req.query));
       api.post('/offers', async (req, reply) => reply.code(201).send(await run('create_offer', req.body)));

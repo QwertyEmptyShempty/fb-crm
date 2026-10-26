@@ -33,6 +33,12 @@ const schema = z.object({
   // Базовые адреса API (меняются только для локальных тестов с заглушками)
   TELEGRAM_API_BASE: z.string().url().default('https://api.telegram.org'),
   FB_GRAPH_BASE: z.string().url().default('https://graph.facebook.com'),
+  // Подсказки по DNS: IP для A-записи корневого домена. Для Render по умолчанию 216.24.57.1.
+  DNS_A_IP: z.string().ip().optional(),
+  // Необязательно: автоматическое добавление доменов в Render через его API
+  RENDER_API_KEY: z.string().min(10).optional(),
+  RENDER_SERVICE_ID: z.string().min(5).optional(),
+  RENDER_API_BASE: z.string().url().default('https://api.render.com/v1'),
   DEFAULT_TZ: z.string().default('UTC'),
 });
 

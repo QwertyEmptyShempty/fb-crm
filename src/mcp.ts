@@ -8,7 +8,7 @@ import { MCP_HIDDEN, ops } from './ops.js';
 const INSTRUCTIONS = `Трекер конверсии Facebook Ads → Telegram.
 Типовой сценарий запуска:
 1) add_bot — подключить бота по токену от @BotFather; затем add_channel — подключить канал (бот должен быть админом с правом приглашать).
-2) create_offer — создать оффер: тексты лендинга (landing) или свой HTML (landing_type=custom + landing_html), приветствия (welcome), channel_id, при желании свой домен (domain).
+2) create_offer — создать оффер: тексты лендинга (landing) или свой HTML (landing_type=custom + landing_html), приветствия (welcome), channel_id, при желании свой домен (domain; домены подключаются через add_domain → check_domain, список — list_domains).
 3) attach_pixel — привязать пиксель Facebook (fb_pixel_id + capi_token).
 4) test_capi — проверить токен (нужен test_event_code), затем get_offer_link — получить готовую ссылку и URL-параметры для Ads Manager.
 5) get_stats / list_subscribers — смотреть воронку просмотры → клики → заявки → подписчики.`;

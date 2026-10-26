@@ -175,6 +175,7 @@ const NAV = [
   ['analytics', 'Аналитика'],
   ['campaigns', 'Кампании'],
   ['bots', 'Боты и каналы'],
+  ['domains', 'Домены'],
   ['pixels', 'Пиксели'],
   ['subscribers', 'Подписчики'],
   ['events', 'События'],
@@ -231,6 +232,7 @@ async function route() {
     if (page === 'campaigns' && parts[1]) view = await pageCampaign(parts[1]);
     else if (page === 'campaigns') view = await pageCampaigns();
     else if (page === 'bots') view = await pageBots();
+    else if (page === 'domains') view = await pageDomains();
     else if (page === 'pixels') view = await pagePixels();
     else if (page === 'subscribers') view = await pageSubscribers();
     else if (page === 'events') view = await pageEvents();
@@ -551,7 +553,7 @@ function toPayload(o) {
 const ctaIn = (html) => (html.match(/data-tg-link|\{\{\s*tg_link\s*\}\}|href=(["'])#tg\1/g) || []).length;
 
 async function pageCampaign(id) {
-  const [offer, channels, pixels] = await Promise.all([api('GET', '/offers/' + id), api('GET', '/channels'), api('GET', '/pixels')]);
+  const [offer, channels, pixels, domainData] = await Promise.all([api('GET', '/offers/' + id), api('GET', '/channels'), api('GET', '/pixels'), api('GET', '/domains')]);
   const o = toEditor(offer);
   let tab = sessionStorage.getItem('tab:' + id) || 'main';
   let dirty = false;
@@ -626,6 +628,49 @@ async function pageCampaign(id) {
       h('option', { value: '' }, '— не выбран —'),
       channels.map((c) => h('option', { value: c.id }, (c.title || c.chat_id) + (c.username ? ' (@' + c.username + ')' : ''))),
     );
+    const domainField = () => {
+      const list = domainData.domains;
+      const cur = list.find((d) => d.host === o.domain);
+      const hintBox = h('div', { class: 'hint' });
+      const sel = h(
+        'select',
+        { value: o.domain || '', onchange: on(o, 'domain', () => drawHint()) },
+        h('option', { value: '' }, '— без своего домена (адрес сервиса) —'),
+        list.map((d) => h('option', { value: d.host }, d.host + (d.status === 'active' ? '' : '  (ещё не настроен)'))),
+        o.domain && !cur ? h('option', { value: o.domain }, o.domain) : null,
+      );
+      sel.value = o.domain || '';
+      const drawHint = () => {
+        const d = list.find((x) => x.host === o.domain);
+        hintBox.replaceChildren(
+          !o.domain
+            ? 'Ссылки будут вести на адрес сервиса. Свой домен выглядит надёжнее для рекламы — подключите его кнопкой справа.'
+            : d && d.status !== 'active'
+              ? h('span', { style: 'color:var(--warn)' }, 'Этот домен ещё не проверен — лендинг по нему может не открываться. Откройте «Домены» и нажмите «Проверить».')
+              : `Лендинг откроется по адресу https://${o.domain}/ (также https://${o.domain}/l/${o.slug}).`,
+        );
+      };
+      drawHint();
+      return h(
+        'div',
+        { class: 'field' },
+        h('label', null, 'Домен лендинга'),
+        h(
+          'div',
+          { class: 'inline' },
+          sel,
+          h('button', { class: 'btn', type: 'button', onclick: () => addDomainModal(async (host) => {
+            const fresh = await api('GET', '/domains');
+            domainData.domains = fresh.domains;
+            o.domain = host;
+            touch();
+            drawBody();
+            toast('Домен добавлен и выбран. Не забудьте нажать «Сохранить».');
+          }) }, 'Добавить домен'),
+        ),
+        hintBox,
+      );
+    };
     const pixBox = h('div');
     const drawPixel = () =>
       pixBox.replaceChildren(
@@ -733,7 +778,7 @@ async function pageCampaign(id) {
       h('div', { class: 'grid2' }, field('Статус', h('select', { value: o.status, onchange: on(o, 'status') }, h('option', { value: 'active' }, 'Активна'), h('option', { value: 'paused' }, 'На паузе — лендинг не открывается'))), field('Адрес в ссылке (slug)', h('input', { type: 'text', value: o.slug, disabled: true }), 'Менять нельзя: он уже может быть в рекламе.')),
       field('Канал Telegram', chanSel, channels.length ? 'Канал и бот подключаются в разделе «Боты и каналы».' : 'Пока нет каналов — подключите бота и канал в разделе «Боты и каналы».'),
       h('label', { class: 'check', style: 'margin-bottom:16px' }, h('input', { type: 'checkbox', checked: o.auto_approve, onchange: on(o, 'auto_approve') }), 'Автоматически принимать заявки на вступление'),
-      field('Свой домен лендинга', h('input', { type: 'text', value: o.domain, placeholder: 'go.example.com', oninput: on(o, 'domain') }), 'Необязательно. Направьте домен на этот сервис (CNAME) и добавьте его в настройках хостинга. Ссылка станет вида https://go.example.com/l/' + o.slug),
+      domainField(),
       h('h2', { style: 'margin-top:26px' }, 'Пиксель Facebook'),
       h('p', { class: 'muted', style: 'margin-top:-6px' }, 'Применяется сразу, без кнопки «Сохранить».'),
       pixBox,
@@ -1041,6 +1086,108 @@ async function pageBots() {
           )
         : null,
     ),
+  );
+}
+
+// ───────────────────────── Домены ─────────────────────────
+
+function addDomainModal(onDone) {
+  const inp = h('input', { type: 'text', placeholder: 'go.example.com', autocapitalize: 'off', autocomplete: 'off', spellcheck: false });
+  modal(
+    'Добавить домен',
+    h(
+      'div',
+      null,
+      h(
+        'ol',
+        { class: 'steps' },
+        h('li', null, 'Купите домен у любого регистратора (например Namecheap, Porkbun, Cloudflare). Если домен уже куплен — сразу к шагу 2.'),
+        h('li', null, 'Впишите его в поле ниже. Лучше поддомен вида go.example.com — основной сайт останется свободным. Можно и корень: example.com.'),
+        h('li', null, 'Нажмите «Добавить». Панель покажет, какие DNS-записи создать у регистратора, и проверит, когда всё заработает.'),
+      ),
+      field('Домен', inp, 'Без https:// и без слэшей. Например: go.example.com'),
+    ),
+    (close) => [
+      h('button', { class: 'btn', onclick: close }, 'Отмена'),
+      h('button', { class: 'btn primary', onclick: guard(async (e) => {
+        if (!inp.value.trim()) throw new Error('Впишите домен, например go.example.com');
+        e.target.disabled = true;
+        try {
+          const d = await api('POST', '/domains', { host: inp.value });
+          close();
+          if (d.render_error) toast('Домен добавлен, но в Render автоматически не добавился — см. подсказку в карточке домена', true);
+          await onDone(d.host);
+        } finally {
+          e.target.disabled = false;
+        }
+      }) }, 'Добавить'),
+    ],
+  );
+  inp.addEventListener('keydown', (e) => e.key === 'Enter' && inp.closest('.modal').querySelector('.btn.primary').click());
+}
+
+async function pageDomains() {
+  const data = await api('GET', '/domains');
+  const cards = data.domains.map((d) => {
+    const active = d.status === 'active';
+    const steps = [];
+    if (!active) {
+      steps.push(
+        h('li', null, data.auto_render
+          ? 'Домен уже отправлен в хостинг (Render) автоматически — делать ничего не нужно.'
+          : h('span', null, 'Добавьте домен в хостинге. На Render: откройте ваш сервис → ', h('b', null, 'Settings'), ' → ', h('b', null, 'Custom Domains'), ' → ', h('b', null, 'Add Custom Domain'), ' → впишите ', h('b', null, d.host), ' → нажмите ', h('b', null, 'Save'), '. Дальше Render покажет свои записи — они такие же, как ниже.')),
+        h('li', null,
+          h('div', null, 'У регистратора откройте настройки домена → раздел ', h('b', null, 'DNS'), ' (может называться DNS Records, Advanced DNS, Управление DNS) и нажмите ', h('b', null, 'Add record'), '. Создайте записи:'),
+          table(
+            [
+              { t: 'Тип', f: (r) => h('b', null, r.type) },
+              { t: 'Имя (Host)', f: (r) => h('span', null, r.name, ' ', h('button', { class: 'btn sm', onclick: () => copy(r.name) }, 'Копировать')) },
+              { t: 'Значение (Target / Value)', f: (r) => h('span', null, r.value, ' ', h('button', { class: 'btn sm', onclick: () => copy(r.value) }, 'Копировать')) },
+              { t: 'Комментарий', f: (r) => r.note || '' },
+            ],
+            d.setup.records,
+          ),
+          h('ul', { class: 'tips' }, d.setup.tips.map((t) => h('li', null, t))),
+        ),
+        h('li', null, 'Подождите 5–30 минут (иногда до 24 часов) и нажмите «Проверить». Когда статус станет «Готов» — домен можно выбирать в кампании.'),
+      );
+    }
+    return h(
+      'div',
+      { class: 'dcard' },
+      h('div', { class: 'dhead' },
+        h('div', null, h('b', { class: 'dhost' }, d.host), ' ', active ? h('span', { class: 'chip ok' }, 'Готов') : h('span', { class: 'chip warn' }, 'Ждёт настройки')),
+        h('div', { class: 'actions' },
+          h('button', { class: 'btn sm', onclick: guard(async (e) => {
+            e.target.disabled = true;
+            try {
+              const r = await api('POST', '/domains/' + d.id + '/check');
+              toast(r.status === 'active' ? 'Домен готов к работе' : 'Пока не готов — причина в карточке домена', r.status !== 'active');
+            } finally {
+              route();
+            }
+          }) }, 'Проверить'),
+          h('button', { class: 'btn sm danger', onclick: guard(async () => {
+            if (!confirm(`Удалить домен ${d.host}?`)) return;
+            await api('DELETE', '/domains/' + d.id);
+            route();
+          }) }, 'Удалить'),
+        ),
+      ),
+      d.problem && !active ? h('div', { class: 'note warn' }, d.problem) : null,
+      d.checked_at ? h('div', { class: 'hint' }, 'Последняя проверка: ' + fmtDate(d.checked_at)) : null,
+      h('div', { class: 'hint' }, d.offers.length ? 'Используется в кампаниях: ' + d.offers.map((x) => x.name).join(', ') : 'Пока не выбран ни в одной кампании. Выберите: Кампании → кампания → вкладка «Основное» → «Домен лендинга».'),
+      steps.length ? h('ol', { class: 'steps' }, steps) : null,
+    );
+  });
+  return h(
+    'div',
+    null,
+    pageHead('Домены', 'Свой домен для лендингов: выглядит надёжнее в рекламе, чем адрес сервиса. Один домен — одна кампания.', h('button', { class: 'btn primary', onclick: () => addDomainModal(() => route()) }, 'Добавить домен')),
+    data.domains.length
+      ? h('div', { class: 'dlist' }, cards)
+      : h('div', { class: 'note' }, h('b', null, 'Доменов пока нет. '), 'Нажмите «Добавить домен» справа вверху — панель проведёт по шагам: что купить, что вписать и какие DNS-записи создать у регистратора.'),
+    h('div', { class: 'note', style: 'margin-top:18px' }, h('b', null, 'Важно. '), 'Сама панель открывается только по адресу ', h('b', null, data.panel_host), ' — это защита от чужого кода на лендингах. Свои домены нужны только для лендингов.'),
   );
 }
 

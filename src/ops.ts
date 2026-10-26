@@ -7,6 +7,7 @@ import { q, q1, HttpError } from './db.js';
 import { sendCapi, type PixelRow } from './capi.js';
 import { clientFor, TgClient } from './telegram.js';
 import { ctaCount } from './landing.js';
+import { addDomain, checkDomain, deleteDomain, ensureDomain, listDomains, normalizeHost } from './domains.js';
 import {
   type BotRow,
   clearOfferCache,
@@ -63,8 +64,8 @@ export const landingSchema = z
 
 const domainSchema = z
   .string()
-  .toLowerCase()
-  .regex(/^(?=.{4,253}$)([a-z0-9-]{1,63}\.)+[a-z]{2,}$/, 'Домен вида track.example.com');
+  .transform(normalizeHost)
+  .pipe(z.string().regex(/^(?=.{4,253}$)([a-z0-9-]{1,63}\.)+[a-z]{2,}$/, 'Домен вида track.example.com'));
 export const landingTypeSchema = z.enum(['default', 'custom']).describe('default — встроенный шаблон; custom — свой HTML/ZIP');
 export const landingHtmlSchema = z
   .string()
@@ -405,6 +406,7 @@ def(
   },
   async (i) => {
     await assertRefs(i.pixel_id, i.channel_id);
+    if (i.domain) await ensureDomain(i.domain);
     const base = i.slug ?? (slugify(i.name) || 'offer');
     for (let attempt = 0; attempt < 5; attempt++) {
       const slug = i.slug && attempt === 0 ? i.slug : `${base}-${randomBytes(2).toString('hex')}`;
@@ -458,6 +460,7 @@ def(
   async ({ offer, ...rest }) => {
     const o = await mustOffer(offer);
     await assertRefs(rest.pixel_id, rest.channel_id);
+    if (rest.domain) await ensureDomain(rest.domain);
     try {
       await patchRow('offers', o.id, rest, ['landing', 'welcome', 'event_map']);
     } catch (e) {
@@ -481,8 +484,31 @@ def(
   },
 );
 
+def('list_domains', 'Список подключённых доменов лендингов со статусом, кампаниями и инструкцией по DNS-записям для каждого.', {}, async () => listDomains());
+
+def(
+  'add_domain',
+  'Добавить домен для лендингов (go.example.com или example.com). Возвращает DNS-записи, которые нужно создать у регистратора. Затем check_domain. Привязать домен к кампании: update_offer с domain.',
+  { host: z.string().min(3).max(300).describe('Домен, например go.example.com') },
+  async ({ host }) => addDomain(host),
+);
+
+def(
+  'check_domain',
+  'Проверить домен: DNS-записи и доступность по https. Статус active — домен готов, pending — в поле problem понятная причина.',
+  { domain: z.string().min(3).describe('id или host домена') },
+  async ({ domain }) => checkDomain(domain),
+);
+
+def(
+  'delete_domain',
+  'Удалить домен из списка (если он не привязан ни к одной кампании).',
+  { domain: z.string().min(3).describe('id или host домена') },
+  async ({ domain }) => deleteDomain(domain),
+);
+
 /** Операции, которые не отдаём нейросети через MCP (необратимые). */
-export const MCP_HIDDEN = new Set(['delete_offer']);
+export const MCP_HIDDEN = new Set(['delete_offer', 'delete_domain']);
 
 def(
   'attach_pixel',
